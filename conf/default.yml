@@ -1,0 +1,7 @@
+seeker:
+    steam:
+        portal:  http://api.steampowered.com/
+        key: 16A02FCADCE5D2C8A90CBD9F8A16E63C
+        thread: 10
+store:
+    badger:
