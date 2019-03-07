@@ -1,0 +1,31 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "O472A4WfbirP+w5gvD18IADrZzQ=",
+			"path": "github.com/olebedev/config",
+			"revision": "9a10d05a33a8b9e828f20491e21e8927dec35f72",
+			"revisionTime": "2017-09-14T11:20:07Z"
+		},
+		{
+			"checksumSHA1": "hD7rnNOh5kO4rhmOpX+96N2Zd9M=",
+			"path": "github.com/valyala/fastjson",
+			"revision": "cbbc967698625210a53d504230710bc007fe245b",
+			"revisionTime": "2019-01-21T03:21:29Z"
+		},
+		{
+			"checksumSHA1": "jCAiUpGiJxZPVynAWyvvmtaG840=",
+			"path": "github.com/valyala/fastjson/fastfloat",
+			"revision": "cbbc967698625210a53d504230710bc007fe245b",
+			"revisionTime": "2019-01-21T03:21:29Z"
+		},
+		{
+			"checksumSHA1": "RDJpJQwkF012L6m/2BJizyOksNw=",
+			"path": "gopkg.in/yaml.v2",
+			"revision": "eb3733d160e74a9c7e442f435eb3bea458e1d19f",
+			"revisionTime": "2017-08-12T16:00:11Z"
+		}
+	],
+	"rootPath": "github.com/ksang/gamecha"
+}

@@ -2,9 +2,11 @@ package seeker
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
+	"io/ioutil"
 	"net/http"
+
+	"github.com/ksang/gamecha/store"
+	"github.com/valyala/fastjson"
 )
 
 var (
@@ -17,6 +19,7 @@ type SteamConfig struct {
 	Key       string
 	ThreadNum int
 	client    *http.Client
+	store     store.GameStore
 }
 
 // GetAppList response parsing
@@ -50,10 +53,21 @@ func (steam *SteamConfig) processSteamAppList(resp *http.Response, err error) er
 		return err
 	}
 	defer resp.Body.Close()
-	var data appListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
 		return err
 	}
-	fmt.Printf("%d apps collected\n", len(data.Applist.Apps))
+	var p fastjson.Parser
+	gameList := map[int]string{}
+	root, err := p.ParseBytes(body)
+	if err != nil {
+		return err
+	}
+	applist := root.Get("applist")
+	apps := applist.GetArray("apps")
+	for _, game := range apps {
+		gameList[game.GetInt("appid")] = string(game.GetStringBytes("name"))
+	}
+	steam.store.SaveGameList(gameList)
 	return nil
 }

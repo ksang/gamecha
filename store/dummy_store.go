@@ -1,5 +1,11 @@
 package store
 
+import (
+	"fmt"
+	"log"
+	"sort"
+)
+
 // DummyStore represents a dummy store for game database
 type DummyStore struct {
 	LogLevel string
@@ -7,6 +13,25 @@ type DummyStore struct {
 
 // Close dummy store
 func (ds *DummyStore) Close() error {
+	return nil
+}
+
+// SaveGameList to dummy store
+func (ds *DummyStore) SaveGameList(games map[int]string) error {
+	log.Printf("Saving %d games", len(games))
+	var keys []int
+	for k := range games {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	for i, k := range keys {
+		if i < 10 || i >= len(games)-10 {
+			fmt.Println("Id:", k, "Name:", games[k])
+		}
+		if i == 10 && len(games) > 20 {
+			fmt.Println("...")
+		}
+	}
 	return nil
 }
 
