@@ -17,8 +17,8 @@ func (ds *DummyStore) Close() error {
 }
 
 // SaveGameList to dummy store
-func (ds *DummyStore) SaveGameList(games map[int]string) error {
-	log.Printf("Saving %d games", len(games))
+func (ds *DummyStore) SaveGameList(platform string, games map[int]string) error {
+	log.Printf("Saving %d %s games", len(games), platform)
 	var keys []int
 	for k := range games {
 		keys = append(keys, k)
