@@ -6,18 +6,18 @@ import (
 	"sort"
 )
 
-// DummyStore represents a dummy store for game database
-type DummyStore struct {
+// BoltStore represents a bolt store for game database
+type BoltStore struct {
 	LogLevel string
 }
 
-// Close dummy store
-func (ds *DummyStore) Close() error {
+// Close badger store
+func (ds *BoltStore) Close() error {
 	return nil
 }
 
-// SaveGameList to dummy store
-func (ds *DummyStore) SaveGameList(platform string, games map[int]string) error {
+// SaveGameList to badger store
+func (ds *BoltStore) SaveGameList(platform string, games map[int]string) error {
 	log.Printf("Saving %d %s games", len(games), platform)
 	var keys []int
 	for k := range games {
@@ -35,14 +35,14 @@ func (ds *DummyStore) SaveGameList(platform string, games map[int]string) error 
 	return nil
 }
 
-// GetGameList from dummy store
-func (ds *DummyStore) GetGameList(platform string) (map[int]string, error) {
+// GetGameList from bolt store
+func (ds *BoltStore) GetGameList(platform string) (map[int]string, error) {
 	return make(map[int]string), nil
 }
 
-// NewDummyStore creates a dummy store
-func NewDummyStore(cfg Config) (*DummyStore, error) {
-	return &DummyStore{
+// NewBoltStore creates a bolt store
+func NewBoltStore(cfg Config) (*BoltStore, error) {
+	return &BoltStore{
 		LogLevel: "debug",
 	}, nil
 }

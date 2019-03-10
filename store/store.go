@@ -6,6 +6,7 @@ package store
 type GameStore interface {
 	Close() error
 	SaveGameList(platform string, games map[int]string) error
+	GetGameList(platform string) (map[int]string, error)
 }
 
 // Config is the configuration struct of seeker
