@@ -4,11 +4,19 @@ import (
 	"fmt"
 	"log"
 	"sort"
+
+	"github.com/etcd-io/bbolt"
+)
+
+var (
+	varBucketName = "gamecha"
 )
 
 // BoltStore represents a bolt store for game database
 type BoltStore struct {
-	LogLevel string
+	LogLevel   string
+	BucketName string
+	db         *bbolt.DB
 }
 
 // Close badger store
@@ -42,7 +50,21 @@ func (ds *BoltStore) GetGameList(platform string) (map[int]string, error) {
 
 // NewBoltStore creates a bolt store
 func NewBoltStore(cfg Config) (*BoltStore, error) {
+	db, err := bbolt.Open(cfg.StorePath, 0600, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Update(func(tx *bbolt.Tx) error {
+		if _, err := tx.CreateBucketIfNotExists([]byte(varBucketName)); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
 	return &BoltStore{
-		LogLevel: "debug",
+		LogLevel:   "debug",
+		BucketName: varBucketName,
+		db:         db,
 	}, nil
 }

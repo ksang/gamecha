@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  name = "github.com/etcd-io/bbolt"
+  packages = ["."]
+  revision = "63597a96ec0ad9e6d43c3fc81e809909e0237461"
+  version = "v1.3.2"
+
+[[projects]]
   branch = "master"
   name = "github.com/olebedev/config"
   packages = ["."]
@@ -17,6 +23,12 @@
   version = "v1.4.1"
 
 [[projects]]
+  branch = "master"
+  name = "golang.org/x/sys"
+  packages = ["unix"]
+  revision = "10058d7d4faa7dd5ef860cbd31af00903076e7b8"
+
+[[projects]]
   name = "gopkg.in/yaml.v2"
   packages = ["."]
   revision = "51d6538a90f86fe93ac480b35f37b2be17fef232"
@@ -25,6 +37,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "19966a85c2d461fe7f011bf4234f69310273745906de0c6fb77ae035db4d8b7c"
+  inputs-digest = "162dfbf0b89da4a8e2de56778e764f32aa643d80456f4b782b959e3fbcbd3e0c"
   solver-name = "gps-cdcl"
   solver-version = 1

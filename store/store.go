@@ -11,7 +11,8 @@ type GameStore interface {
 
 // Config is the configuration struct of seeker
 type Config struct {
-	Database string
+	Database  string
+	StorePath string
 }
 
 // New creates a new GameStore according to configuration
