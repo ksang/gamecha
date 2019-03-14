@@ -97,7 +97,7 @@ func (steam *SteamConfig) processSteamAppList(resp *http.Response, err error) er
 	for _, game := range apps {
 		gameList[game.GetInt("appid")] = string(game.GetStringBytes("name"))
 	}
-	steam.store.SaveGameList("steam", gameList)
+	steam.store.SaveGameList([]byte("steam"), gameList)
 	return nil
 }
 

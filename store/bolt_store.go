@@ -1,15 +1,10 @@
 package store
 
 import (
-	"fmt"
+	"errors"
 	"log"
-	"sort"
 
 	"github.com/etcd-io/bbolt"
-)
-
-var (
-	varBucketName = "gamecha"
 )
 
 // BoltStore represents a bolt store for game database
@@ -20,32 +15,48 @@ type BoltStore struct {
 }
 
 // Close badger store
-func (ds *BoltStore) Close() error {
+func (bs *BoltStore) Close() error {
 	return nil
 }
 
 // SaveGameList to badger store
-func (ds *BoltStore) SaveGameList(platform string, games map[int]string) error {
+func (bs *BoltStore) SaveGameList(platform string, games map[int]string) error {
 	log.Printf("Saving %d %s games", len(games), platform)
-	var keys []int
-	for k := range games {
-		keys = append(keys, k)
+	value, err := Encode(games)
+	if err != nil {
+		return err
 	}
-	sort.Ints(keys)
-	for i, k := range keys {
-		if i < 10 || i >= len(games)-10 {
-			fmt.Println("Id:", k, "Name:", games[k])
+	key := []byte(platform + "/" + StoreGameListKey)
+	if err := bs.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(StoreBucketName))
+		if b == nil {
+			return errors.New("bolt store no bucket found:" + string(StoreBucketName))
 		}
-		if i == 10 && len(games) > 20 {
-			fmt.Println("...")
+		if err := b.Put(key, value); err != nil {
+			return err
 		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	return nil
 }
 
 // GetGameList from bolt store
-func (ds *BoltStore) GetGameList(platform string) (map[int]string, error) {
-	return make(map[int]string), nil
+func (bs *BoltStore) GetGameList(platform string) (map[int]string, error) {
+	var value []byte
+	key := []byte(platform + "/" + StoreGameListKey)
+	if err := bs.db.View(func(tx *bbolt.Tx) error {
+		value = tx.Bucket([]byte(StoreBucketName)).Get(key)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	var games map[int]string
+	if err := Decode(value, &games); err != nil {
+		return nil, err
+	}
+	return games, nil
 }
 
 // NewBoltStore creates a bolt store
@@ -55,7 +66,7 @@ func NewBoltStore(cfg Config) (*BoltStore, error) {
 		return nil, err
 	}
 	if err := db.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists([]byte(varBucketName)); err != nil {
+		if _, err := tx.CreateBucketIfNotExists([]byte(StoreBucketName)); err != nil {
 			return err
 		}
 		return nil
@@ -64,7 +75,7 @@ func NewBoltStore(cfg Config) (*BoltStore, error) {
 	}
 	return &BoltStore{
 		LogLevel:   "debug",
-		BucketName: varBucketName,
+		BucketName: string(StoreBucketName),
 		db:         db,
 	}, nil
 }

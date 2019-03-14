@@ -15,6 +15,13 @@ type Config struct {
 	StorePath string
 }
 
+var (
+	// StoreGameListKey is sub-key name placing full game list of a platform
+	StoreGameListKey = "index"
+	// StoreBucketName is the bucket name used
+	StoreBucketName = "gamecha"
+)
+
 // New creates a new GameStore according to configuration
 func New(cfg Config) (GameStore, error) {
 	if cfg.Database == "dummy" {
