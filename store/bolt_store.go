@@ -21,7 +21,7 @@ func (bs *BoltStore) Close() error {
 
 // SaveGameList to badger store
 func (bs *BoltStore) SaveGameList(platform string, games map[int]string) error {
-	log.Printf("Saving %d %s games", len(games), platform)
+	log.Printf("Saving list %d %s games", len(games), platform)
 	value, err := Encode(games)
 	if err != nil {
 		return err
@@ -57,6 +57,46 @@ func (bs *BoltStore) GetGameList(platform string) (map[int]string, error) {
 		return nil, err
 	}
 	return games, nil
+}
+
+// SaveGameRecord to badger store
+func (bs *BoltStore) SaveGameRecord(platform string, subid string, r GameRecord) error {
+	log.Printf("Saving GameRecord: %s, %s.", platform, r.Name)
+	value, err := Encode(r)
+	if err != nil {
+		return err
+	}
+	key := []byte(platform + "/" + subid)
+	if err := bs.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(StoreBucketName))
+		if b == nil {
+			return errors.New("bolt store no bucket found:" + string(StoreBucketName))
+		}
+		if err := b.Put(key, value); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GetGameRecord from bolt store
+func (bs *BoltStore) GetGameRecord(platform string, subid string) (*GameRecord, error) {
+	var value []byte
+	key := []byte(platform + "/" + subid)
+	if err := bs.db.View(func(tx *bbolt.Tx) error {
+		value = tx.Bucket([]byte(StoreBucketName)).Get(key)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	var r GameRecord
+	if err := Decode(value, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
 }
 
 // NewBoltStore creates a bolt store

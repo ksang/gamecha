@@ -6,22 +6,29 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/ksang/gamecha/store"
 	"github.com/valyala/fastjson"
 )
 
 var (
-	pathGetAppList = "ISteamApps/GetAppList/v2"
+	pathGetAppList   = "/ISteamApps/GetAppList/v2"
+	pathGetAppDetail = "https://store.steampowered.com/api/appdetails"
 )
 
 // SteamConfig is the configuration struct of steam seeker
 type SteamConfig struct {
-	Portal    string
-	Key       string
-	ThreadNum int
-	client    *http.Client
-	store     store.GameStore
+	Portal        string
+	Key           string
+	ThreadNum     int
+	RetryInterval time.Duration
+	client        *http.Client
+	store         store.GameStore
+	queue         chan int
+	workerQuit    chan struct{}
+	workerReturn  chan store.GameRecord
 }
 
 // appdetail response parsing
@@ -44,9 +51,9 @@ type steamAppDetailData struct {
 	SupportLanguages    string                 `json:"supported_languages"`
 	HeaderImage         string                 `json:"header_image"`
 	Website             string                 `json:"website"`
-	PcRequirements      map[string]string      `json:"pc_requirements"`
-	MacRequirements     map[string]string      `json:"mac_requirements"`
-	LinuxRequirements   map[string]string      `json:"linux_requirements"`
+	PcRequirements      interface{}            `json:"pc_requirements"`
+	MacRequirements     interface{}            `json:"mac_requirements"`
+	LinuxRequirements   interface{}            `json:"linux_requirements"`
 	Developers          []string               `json:"developers"`
 	Publishers          []string               `json:"publishers"`
 	PriceOverview       map[string]interface{} `json:"price_overview"`
@@ -97,7 +104,72 @@ func (steam *SteamConfig) processSteamAppList(resp *http.Response, err error) er
 	for _, game := range apps {
 		gameList[game.GetInt("appid")] = string(game.GetStringBytes("name"))
 	}
-	steam.store.SaveGameList([]byte("steam"), gameList)
+
+	oldList, err := steam.store.GetGameList("steam")
+	if err != nil {
+		return err
+	}
+	diff, err := steam.createSeekerQueue(oldList, gameList)
+	if err != nil {
+		return err
+	}
+	if len(diff) > 0 {
+		steam.store.SaveGameList("steam", gameList)
+	}
+	return nil
+}
+
+func (steam *SteamConfig) createSeekerQueue(oldList map[int]string, newList map[int]string) (map[int]string, error) {
+	ret := make(map[int]string)
+	for k, v := range newList {
+		if _, ok := oldList[k]; !ok {
+			ret[k] = v
+		}
+	}
+	go func() {
+		for k := range ret {
+			steam.queue <- k
+		}
+		close(steam.queue)
+	}()
+	return ret, nil
+}
+
+func (steam *SteamConfig) getSteamAppDetail(ctx context.Context, appid int) error {
+	req, err := http.NewRequest("GET", pathGetAppDetail, nil)
+	q := req.URL.Query()
+	q.Add("appids", strconv.FormatInt(int64(appid), 10))
+	req.URL.RawQuery = q.Encode()
+	if err != nil {
+		return err
+	}
+	return httpDo(ctx, req, steam.client, steam.processSteamAppDetail)
+}
+
+func (steam *SteamConfig) processSteamAppDetail(resp *http.Response, err error) error {
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	res, err := steam.parseSteamAppDetail(body)
+	if err != nil {
+		return err
+	}
+	sad := res.Data
+	gr := store.GameRecord{
+		Name:        sad.Name,
+		RequiredAge: sad.RequiredAge,
+		Description: sad.DetailedDescription,
+		About:       sad.AboutTheGame,
+		Languages:   sad.SupportLanguages,
+		Developers:  sad.Developers,
+		Publishers:  sad.Publishers,
+	}
+	steam.workerReturn <- gr
 	return nil
 }
 

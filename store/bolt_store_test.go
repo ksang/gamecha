@@ -54,3 +54,43 @@ func TestSaveGetGameList(t *testing.T) {
 		t.Logf("Result: %v", gl)
 	}
 }
+
+func TestSaveGetGameRecord(t *testing.T) {
+	store, err := NewBoltStore(storeCfg)
+	if err != nil {
+		t.Errorf("TestNewBoltStore err: %v", err)
+		return
+	}
+	defer store.db.Close()
+	var tests = []struct {
+		k string
+		r GameRecord
+	}{
+		{
+			"1",
+			GameRecord{
+				Name:        "TestGame",
+				RequiredAge: 18,
+				Description: "No desc",
+				About:       "No About",
+				Languages:   "Chinese,English",
+				Developers:  []string{"Kojima Productions", "CDPR"},
+				Publishers:  []string{"Kojima Productions", "CDPR"},
+			},
+		},
+	}
+
+	for caseid, c := range tests {
+		if err := store.SaveGameRecord("test", c.k, c.r); err != nil {
+			t.Errorf("case #%d, SaveGameRecord err: %v", caseid+1, err)
+		}
+		g, err := store.GetGameRecord("test", c.k)
+		if err != nil {
+			t.Errorf("case #%d, decode err: %v", caseid+1, err)
+		}
+		if !reflect.DeepEqual(g, &c.r) {
+			t.Errorf("case #%d, got: %#v, expected: %#v", caseid+1, g, &c.r)
+		}
+		t.Logf("Result: %v", g)
+	}
+}

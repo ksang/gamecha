@@ -29,3 +29,14 @@ func New(cfg Config) (GameStore, error) {
 	}
 	return nil, nil
 }
+
+// GameRecord represents detailed game information
+type GameRecord struct {
+	Name        string
+	RequiredAge int
+	Description string
+	About       string
+	Languages   string
+	Developers  []string
+	Publishers  []string
+}

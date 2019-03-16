@@ -35,9 +35,13 @@ func (ds *DummyStore) SaveGameList(platform string, games map[int]string) error 
 	return nil
 }
 
-// GetGameList from dummy store
+// GetGameList from dummy store, pretend to have most of games
 func (ds *DummyStore) GetGameList(platform string) (map[int]string, error) {
-	return make(map[int]string), nil
+	ret := make(map[int]string)
+	for i := 11; i < 1100000; i++ {
+		ret[i] = ""
+	}
+	return ret, nil
 }
 
 // NewDummyStore creates a dummy store

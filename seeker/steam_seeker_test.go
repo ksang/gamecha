@@ -2,6 +2,7 @@ package seeker
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,16 +12,21 @@ import (
 func TestGetSteamAppList(t *testing.T) {
 	s, _ := store.NewDummyStore(store.Config{})
 	steam := &SteamConfig{
-		Portal:    "http://api.steampowered.com/",
+		Portal:    "http://api.steampowered.com",
 		Key:       "",
 		ThreadNum: 10,
 		store:     s,
+		queue:     make(chan int),
 	}
 	timeout, _ := time.ParseDuration("60s")
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := steam.getSteamAppList(ctx); err != nil {
 		t.Errorf("getSteamAppList err: %v", err)
+	}
+	fmt.Println("Games to be collected:")
+	for id := range steam.queue {
+		fmt.Printf("%d ", id)
 	}
 }
 
@@ -220,4 +226,36 @@ func TestParseSteamAppDetail(t *testing.T) {
 		t.Errorf("TestParseSteamAppDetail err: %v", err)
 	}
 	t.Logf("TestParseSteamAppDetail result: %#v", appDetail)
+}
+
+func TestGetSteamAppDetail(t *testing.T) {
+	steam := &SteamConfig{
+		Portal:       "http://api.steampowered.com",
+		Key:          "",
+		queue:        make(chan int),
+		workerReturn: make(chan store.GameRecord, 10),
+	}
+	var tests = []struct {
+		id int
+	}{
+		{
+			10,
+		},
+		{
+			1050240,
+		},
+	}
+
+	timeout, _ := time.ParseDuration("20s")
+	for caseid, c := range tests {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		if err := steam.getSteamAppDetail(ctx, c.id); err != nil {
+			t.Errorf("case: #%d getSteamAppDetail err: %v", caseid+1, err)
+			continue
+		}
+		gr := <-steam.workerReturn
+		t.Logf("case: #%d got game record: %#v", caseid+1, gr)
+	}
+
 }
