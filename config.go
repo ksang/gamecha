@@ -11,6 +11,7 @@ import (
 var (
 	defaultWorkerNum     = 10
 	defaultRetryInterval = "30s"
+	defaultRetryCount    = 5
 	defaultStoreType     = "bolt"
 	defaultStorePath     = "gamecha.db"
 )
@@ -38,6 +39,10 @@ func ParseSeekerConfig(confStr string) (*seeker.Config, error) {
 	if !ok {
 		ris = defaultRetryInterval
 	}
+	rc, ok := steamConf["retry_count"]
+	if !ok {
+		ris = defaultRetryCount
+	}
 	ri, err := time.ParseDuration(ris.(string))
 	if err != nil {
 		return nil, err
@@ -49,6 +54,7 @@ func ParseSeekerConfig(confStr string) (*seeker.Config, error) {
 			Key:           steamConf["key"].(string),
 			WorkerNum:     wn.(int),
 			RetryInterval: ri,
+			RetryCount:    rc.(int),
 		},
 	}, nil
 }

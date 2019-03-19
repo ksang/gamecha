@@ -14,9 +14,20 @@ import (
 	"github.com/valyala/fastjson"
 )
 
+// ContextKey is used to define key used in context
+type ContextKey string
+
 var (
 	pathGetAppList   = "/ISteamApps/GetAppList/v2"
 	pathGetAppDetail = "https://store.steampowered.com/api/appdetails"
+	workerIDKey      = ContextKey("workerID")
+)
+
+var (
+	// ErrSteamFailReponse indicates steam api response with failed message
+	ErrSteamFailReponse = errors.New("failed steam response")
+	// ErrSteamRateLimit indicates steam api is rate limiting our seeker
+	ErrSteamRateLimit = errors.New("steam rate limit")
 )
 
 // SteamConfig is the configuration struct of steam seeker
@@ -51,7 +62,7 @@ type steamAppDetailData struct {
 	Typ                 string                 `json:"type"`
 	Name                string                 `json:"name"`
 	Appid               int                    `json:"steam_appid"`
-	RequiredAge         int                    `json:"required_age"`
+	RequiredAge         interface{}            `json:"required_age"`
 	IsFree              bool                   `json:"is_free"`
 	DetailedDescription string                 `json:"detailed_description"`
 	AboutTheGame        string                 `json:"about_the_game"`
@@ -94,7 +105,8 @@ func startSteamSeeker(ctx context.Context, cfg SteamConfig, db store.GameStore) 
 		return nil, err
 	}
 	for i := 0; i < cfg.WorkerNum; i++ {
-		go steam.workerThread(ctx)
+		wCtx := context.WithValue(ctx, workerIDKey, i)
+		go steam.workerThread(wCtx)
 	}
 	return &steam, nil
 }
@@ -185,7 +197,7 @@ func (steam *SteamSeeker) createSeekerQueue(oldList map[int]string, newList map[
 }
 
 func (steam *SteamSeeker) getSteamAppDetail(ctx context.Context, appid int) error {
-	log.Printf("steam seeker getting app detail: %d", appid)
+	log.Printf("workerThread[%d] getting app detail: %d", ctx.Value(workerIDKey), appid)
 	req, err := http.NewRequest("GET", pathGetAppDetail, nil)
 	q := req.URL.Query()
 	q.Add("appids", strconv.FormatInt(int64(appid), 10))
@@ -210,9 +222,24 @@ func (steam *SteamSeeker) processSteamAppDetail(resp *http.Response, err error) 
 		return err
 	}
 	sad := res.Data
+	var reqAge int64
+	var err1 error
+	switch v := sad.RequiredAge.(type) {
+	case int:
+		reqAge = int64(sad.RequiredAge.(int))
+	case string:
+		if reqAge, err1 = strconv.ParseInt(sad.RequiredAge.(string), 10, 32); err1 != nil {
+			return err1
+		}
+	case float64:
+		reqAge = int64(sad.RequiredAge.(float64))
+	default:
+		log.Printf("RequiredAge unknown type %T!", v)
+		return errors.New("can't parse required age")
+	}
 	gr := store.GameRecord{
 		Name:        sad.Name,
-		RequiredAge: sad.RequiredAge,
+		RequiredAge: int(reqAge),
 		Description: sad.DetailedDescription,
 		About:       sad.AboutTheGame,
 		Languages:   sad.SupportLanguages,
@@ -238,7 +265,7 @@ func (steam *SteamSeeker) parseSteamAppDetail(data []byte) (steamAppDetail, erro
 			return v, nil
 		}
 	}
-	return steamAppDetail{}, errors.New("malformed or failed appdetail response")
+	return steamAppDetail{}, ErrSteamFailReponse
 }
 
 func (steam *SteamSeeker) workerThread(ctx context.Context) error {
@@ -253,12 +280,16 @@ func (steam *SteamSeeker) workerThread(ctx context.Context) error {
 				if err := steam.getSteamAppDetail(ctx, appID); err == nil || (rc > 0 && i >= rc) {
 					break
 				} else {
-					log.Printf("workerThread getSteamAppDetail err: %v appid: %d retry count: %d", err, appID, i)
+					if err == ErrSteamRateLimit {
+						i = 0
+					}
+
+					log.Printf("workerThread[%d] getSteamAppDetail err: %v appid: %d retry count: %d", ctx.Value(workerIDKey).(int), err, appID, i)
 					time.Sleep(steam.config.RetryInterval)
 				}
 			}
 		case <-steam.workerQuit:
-			log.Printf("workerThread quiting")
+			log.Printf("workerThread %d quiting", ctx.Value(workerIDKey).(int))
 			return nil
 		}
 	}

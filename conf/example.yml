@@ -4,6 +4,7 @@ seeker:
         key: 16A02FCADCE5D2C8A90CBD9F8A16E63C
         woker: 10
         retry_interval: 30s
+        retry_count: 3
 store:
     type: bolt
     path: gamecha.db
