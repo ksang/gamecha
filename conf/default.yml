@@ -2,6 +2,8 @@ seeker:
     steam:
         portal:  http://api.steampowered.com/
         key: 16A02FCADCE5D2C8A90CBD9F8A16E63C
-        thread: 10
+        woker: 10
+        retry_interval: 30s
 store:
-    bolt:
+    type: bolt
+    path: gamecha.db

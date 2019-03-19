@@ -23,9 +23,12 @@ var (
 )
 
 // New creates a new GameStore according to configuration
-func New(cfg Config) (GameStore, error) {
+func New(cfg *Config) (GameStore, error) {
 	if cfg.Database == "dummy" {
-		return NewDummyStore(cfg)
+		return NewDummyStore(*cfg)
+	}
+	if cfg.Database == "bolt" {
+		return NewBoltStore(*cfg)
 	}
 	return nil, nil
 }

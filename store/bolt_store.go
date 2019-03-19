@@ -53,8 +53,10 @@ func (bs *BoltStore) GetGameList(platform string) (map[int]string, error) {
 		return nil, err
 	}
 	var games map[int]string
-	if err := Decode(value, &games); err != nil {
-		return nil, err
+	if len(value) > 0 {
+		if err := Decode(value, &games); err != nil {
+			return nil, err
+		}
 	}
 	return games, nil
 }
@@ -93,8 +95,10 @@ func (bs *BoltStore) GetGameRecord(platform string, subid string) (*GameRecord, 
 		return nil, err
 	}
 	var r GameRecord
-	if err := Decode(value, &r); err != nil {
-		return nil, err
+	if len(value) > 0 {
+		if err := Decode(value, &r); err != nil {
+			return nil, err
+		}
 	}
 	return &r, nil
 }
@@ -113,6 +117,7 @@ func NewBoltStore(cfg Config) (*BoltStore, error) {
 	}); err != nil {
 		return nil, err
 	}
+	log.Printf("%s store created at: %s bucket: %s", cfg.Database, cfg.StorePath, StoreBucketName)
 	return &BoltStore{
 		LogLevel:   "debug",
 		BucketName: string(StoreBucketName),

@@ -11,12 +11,15 @@ import (
 
 func TestGetSteamAppList(t *testing.T) {
 	s, _ := store.NewDummyStore(store.Config{})
-	steam := &SteamConfig{
+	cfg := SteamConfig{
 		Portal:    "http://api.steampowered.com",
 		Key:       "",
-		ThreadNum: 10,
-		store:     s,
-		queue:     make(chan int),
+		WorkerNum: 10,
+	}
+	steam := SteamSeeker{
+		config: cfg,
+		store:  s,
+		queue:  make(chan int),
 	}
 	timeout, _ := time.ParseDuration("60s")
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -220,7 +223,7 @@ func TestParseSteamAppDetail(t *testing.T) {
     }
   }
 }`
-	steam := &SteamConfig{}
+	steam := &SteamSeeker{}
 	appDetail, err := steam.parseSteamAppDetail([]byte(dataStr))
 	if err != nil {
 		t.Errorf("TestParseSteamAppDetail err: %v", err)
@@ -229,9 +232,13 @@ func TestParseSteamAppDetail(t *testing.T) {
 }
 
 func TestGetSteamAppDetail(t *testing.T) {
-	steam := &SteamConfig{
-		Portal:       "http://api.steampowered.com",
-		Key:          "",
+	cfg := SteamConfig{
+		Portal:    "http://api.steampowered.com",
+		Key:       "",
+		WorkerNum: 10,
+	}
+	steam := SteamSeeker{
+		config:       cfg,
 		queue:        make(chan int),
 		workerReturn: make(chan store.GameRecord, 10),
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -22,13 +23,20 @@ var (
 type SteamConfig struct {
 	Portal        string
 	Key           string
-	ThreadNum     int
+	WorkerNum     int
 	RetryInterval time.Duration
-	client        *http.Client
-	store         store.GameStore
-	queue         chan int
-	workerQuit    chan struct{}
-	workerReturn  chan store.GameRecord
+	RetryCount    int
+}
+
+// SteamSeeker object
+type SteamSeeker struct {
+	config       SteamConfig
+	client       *http.Client
+	store        store.GameStore
+	queue        chan int
+	workerQuit   chan struct{}
+	workerDone   chan struct{}
+	workerReturn chan store.GameRecord
 }
 
 // appdetail response parsing
@@ -73,19 +81,56 @@ type steamAppDetailData struct {
 	ContentDescriptors map[string]interface{}   `json:"content_descriptors"`
 }
 
-func startSteamSeeker(ctx context.Context, cfg *SteamConfig) error {
+func startSteamSeeker(ctx context.Context, cfg SteamConfig, db store.GameStore) (*SteamSeeker, error) {
+	steam := SteamSeeker{
+		config:       cfg,
+		queue:        make(chan int),
+		store:        db,
+		workerReturn: make(chan store.GameRecord, cfg.WorkerNum),
+		workerQuit:   make(chan struct{}, cfg.WorkerNum),
+		workerDone:   make(chan struct{}, cfg.WorkerNum),
+	}
+	if err := steam.getSteamAppList(ctx); err != nil {
+		return nil, err
+	}
+	for i := 0; i < cfg.WorkerNum; i++ {
+		go steam.workerThread(ctx)
+	}
+	return &steam, nil
+}
+
+// Stop steam seeker for all workers
+func (steam *SteamSeeker) Stop() error {
+	for i := 0; i < steam.config.WorkerNum; i++ {
+		steam.workerQuit <- struct{}{}
+	}
 	return nil
 }
 
-func (steam *SteamConfig) getSteamAppList(ctx context.Context) error {
-	req, err := http.NewRequest("GET", steam.Portal+pathGetAppList, nil)
+// WaitUntilDone all steam seeker workers done their work
+func (steam *SteamSeeker) WaitUntilDone() error {
+	c := 0
+	for {
+		select {
+		case <-steam.workerDone:
+			c++
+		}
+		if c == steam.config.WorkerNum {
+			return nil
+		}
+	}
+}
+
+func (steam *SteamSeeker) getSteamAppList(ctx context.Context) error {
+	log.Printf("steam seeker getting app list")
+	req, err := http.NewRequest("GET", steam.config.Portal+pathGetAppList, nil)
 	if err != nil {
 		return err
 	}
 	return httpDo(ctx, req, steam.client, steam.processSteamAppList)
 }
 
-func (steam *SteamConfig) processSteamAppList(resp *http.Response, err error) error {
+func (steam *SteamSeeker) processSteamAppList(resp *http.Response, err error) error {
 	if err != nil {
 		return err
 	}
@@ -109,6 +154,7 @@ func (steam *SteamConfig) processSteamAppList(resp *http.Response, err error) er
 	if err != nil {
 		return err
 	}
+	log.Printf("processSteamAppList: oldGameList len: %d, newGameList len: %d", len(oldList), len(gameList))
 	diff, err := steam.createSeekerQueue(oldList, gameList)
 	if err != nil {
 		return err
@@ -119,7 +165,7 @@ func (steam *SteamConfig) processSteamAppList(resp *http.Response, err error) er
 	return nil
 }
 
-func (steam *SteamConfig) createSeekerQueue(oldList map[int]string, newList map[int]string) (map[int]string, error) {
+func (steam *SteamSeeker) createSeekerQueue(oldList map[int]string, newList map[int]string) (map[int]string, error) {
 	ret := make(map[int]string)
 	for k, v := range newList {
 		if _, ok := oldList[k]; !ok {
@@ -130,12 +176,16 @@ func (steam *SteamConfig) createSeekerQueue(oldList map[int]string, newList map[
 		for k := range ret {
 			steam.queue <- k
 		}
+		for i := 0; i < steam.config.WorkerNum; i++ {
+			steam.workerQuit <- struct{}{}
+		}
 		close(steam.queue)
 	}()
 	return ret, nil
 }
 
-func (steam *SteamConfig) getSteamAppDetail(ctx context.Context, appid int) error {
+func (steam *SteamSeeker) getSteamAppDetail(ctx context.Context, appid int) error {
+	log.Printf("steam seeker getting app detail: %d", appid)
 	req, err := http.NewRequest("GET", pathGetAppDetail, nil)
 	q := req.URL.Query()
 	q.Add("appids", strconv.FormatInt(int64(appid), 10))
@@ -146,7 +196,7 @@ func (steam *SteamConfig) getSteamAppDetail(ctx context.Context, appid int) erro
 	return httpDo(ctx, req, steam.client, steam.processSteamAppDetail)
 }
 
-func (steam *SteamConfig) processSteamAppDetail(resp *http.Response, err error) error {
+func (steam *SteamSeeker) processSteamAppDetail(resp *http.Response, err error) error {
 	if err != nil {
 		return err
 	}
@@ -173,7 +223,7 @@ func (steam *SteamConfig) processSteamAppDetail(resp *http.Response, err error) 
 	return nil
 }
 
-func (steam *SteamConfig) parseSteamAppDetail(data []byte) (steamAppDetail, error) {
+func (steam *SteamSeeker) parseSteamAppDetail(data []byte) (steamAppDetail, error) {
 	var ret steamAppDetailResp
 	if err := json.Unmarshal(data, &ret); err != nil {
 		return steamAppDetail{}, err
@@ -189,4 +239,27 @@ func (steam *SteamConfig) parseSteamAppDetail(data []byte) (steamAppDetail, erro
 		}
 	}
 	return steamAppDetail{}, errors.New("malformed or failed appdetail response")
+}
+
+func (steam *SteamSeeker) workerThread(ctx context.Context) error {
+	defer func() {
+		steam.workerDone <- struct{}{}
+	}()
+	rc := steam.config.RetryCount
+	for {
+		select {
+		case appID := <-steam.queue:
+			for i := 0; ; i++ {
+				if err := steam.getSteamAppDetail(ctx, appID); err == nil || (rc > 0 && i >= rc) {
+					break
+				} else {
+					log.Printf("workerThread getSteamAppDetail err: %v appid: %d retry count: %d", err, appID, i)
+					time.Sleep(steam.config.RetryInterval)
+				}
+			}
+		case <-steam.workerQuit:
+			log.Printf("workerThread quiting")
+			return nil
+		}
+	}
 }
