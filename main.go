@@ -3,8 +3,12 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/ksang/gamecha/seeker"
 	"github.com/ksang/gamecha/store"
@@ -36,6 +40,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT)
+	defer func() {
+		signal.Stop(sigs)
+		cancel()
+	}()
+	go func() {
+		select {
+		case <-sigs:
+			fmt.Println("Signaled to terminate.")
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 	log.Fatal(seeker.Start(ctx, seekerCfg, db))
 }

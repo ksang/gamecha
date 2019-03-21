@@ -8,3 +8,6 @@ seeker:
 store:
     type: bolt
     path: gamecha.db
+    buckets:
+        steam
+        gog

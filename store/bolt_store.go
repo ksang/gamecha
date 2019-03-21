@@ -3,15 +3,16 @@ package store
 import (
 	"errors"
 	"log"
+	"strconv"
 
 	"github.com/etcd-io/bbolt"
 )
 
 // BoltStore represents a bolt store for game database
 type BoltStore struct {
-	LogLevel   string
-	BucketName string
-	db         *bbolt.DB
+	LogLevel string
+	Buckets  []string
+	db       *bbolt.DB
 }
 
 // Close badger store
@@ -26,11 +27,11 @@ func (bs *BoltStore) SaveGameList(platform string, games map[int]string) error {
 	if err != nil {
 		return err
 	}
-	key := []byte(platform + "/" + StoreGameListKey)
+	key := []byte(StoreGameListKey)
 	if err := bs.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(StoreBucketName))
+		b := tx.Bucket([]byte(platform))
 		if b == nil {
-			return errors.New("bolt store no bucket found:" + string(StoreBucketName))
+			return errors.New("bolt store no bucket found:" + string(platform))
 		}
 		if err := b.Put(key, value); err != nil {
 			return err
@@ -42,12 +43,12 @@ func (bs *BoltStore) SaveGameList(platform string, games map[int]string) error {
 	return nil
 }
 
-// GetGameList from bolt store
+// GetGameList index from bolt store
 func (bs *BoltStore) GetGameList(platform string) (map[int]string, error) {
 	var value []byte
-	key := []byte(platform + "/" + StoreGameListKey)
+	key := []byte(StoreGameListKey)
 	if err := bs.db.View(func(tx *bbolt.Tx) error {
-		value = tx.Bucket([]byte(StoreBucketName)).Get(key)
+		value = tx.Bucket([]byte(platform)).Get(key)
 		return nil
 	}); err != nil {
 		return nil, err
@@ -61,6 +62,23 @@ func (bs *BoltStore) GetGameList(platform string) (map[int]string, error) {
 	return games, nil
 }
 
+// GetSavedGameList from bolt store
+func (bs *BoltStore) GetSavedGameList(platform string) (map[int]string, error) {
+	games := make(map[int]string)
+	if err := bs.db.View(func(tx *bbolt.Tx) error {
+		c := tx.Bucket([]byte(platform)).Cursor()
+		for k, _ := c.First(); k != nil; k, _ = c.Next() {
+			if id, err := strconv.ParseInt(string(k), 10, 32); err == nil {
+				games[int(id)] = ""
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return games, nil
+}
+
 // SaveGameRecord to badger store
 func (bs *BoltStore) SaveGameRecord(platform string, subid string, r GameRecord) error {
 	log.Printf("Saving GameRecord: %s, %s.", platform, r.Name)
@@ -68,11 +86,11 @@ func (bs *BoltStore) SaveGameRecord(platform string, subid string, r GameRecord)
 	if err != nil {
 		return err
 	}
-	key := []byte(platform + "/" + subid)
+	key := []byte(subid)
 	if err := bs.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(StoreBucketName))
+		b := tx.Bucket([]byte(platform))
 		if b == nil {
-			return errors.New("bolt store no bucket found:" + string(StoreBucketName))
+			return errors.New("bolt store no bucket found:" + string(platform))
 		}
 		if err := b.Put(key, value); err != nil {
 			return err
@@ -87,9 +105,9 @@ func (bs *BoltStore) SaveGameRecord(platform string, subid string, r GameRecord)
 // GetGameRecord from bolt store
 func (bs *BoltStore) GetGameRecord(platform string, subid string) (*GameRecord, error) {
 	var value []byte
-	key := []byte(platform + "/" + subid)
+	key := []byte(subid)
 	if err := bs.db.View(func(tx *bbolt.Tx) error {
-		value = tx.Bucket([]byte(StoreBucketName)).Get(key)
+		value = tx.Bucket([]byte(platform)).Get(key)
 		return nil
 	}); err != nil {
 		return nil, err
@@ -109,18 +127,20 @@ func NewBoltStore(cfg Config) (*BoltStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists([]byte(StoreBucketName)); err != nil {
-			return err
+	for _, b := range cfg.Buckets {
+		if err := db.Update(func(tx *bbolt.Tx) error {
+			if _, err := tx.CreateBucketIfNotExists([]byte(b)); err != nil {
+				return err
+			}
+			return nil
+		}); err != nil {
+			return nil, err
 		}
-		return nil
-	}); err != nil {
-		return nil, err
 	}
-	log.Printf("%s store created at: %s bucket: %s", cfg.Database, cfg.StorePath, StoreBucketName)
+	log.Printf("%s store created at: %s buckets: %s", cfg.Database, cfg.StorePath, cfg.Buckets)
 	return &BoltStore{
-		LogLevel:   "debug",
-		BucketName: string(StoreBucketName),
-		db:         db,
+		LogLevel: "debug",
+		Buckets:  cfg.Buckets,
+		db:       db,
 	}, nil
 }

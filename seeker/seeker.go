@@ -19,5 +19,5 @@ func Start(ctx context.Context, cfg *Config, db store.GameStore) error {
 	if err != nil {
 		return err
 	}
-	return ss.WaitUntilDone()
+	return ss.WaitUntilDone(ctx)
 }

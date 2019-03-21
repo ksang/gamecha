@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	"github.com/ksang/gamecha/seeker"
@@ -39,13 +40,13 @@ func ParseSeekerConfig(confStr string) (*seeker.Config, error) {
 	if !ok {
 		ris = defaultRetryInterval
 	}
-	rc, ok := steamConf["retry_count"]
-	if !ok {
-		ris = defaultRetryCount
-	}
 	ri, err := time.ParseDuration(ris.(string))
 	if err != nil {
 		return nil, err
+	}
+	rc, ok := steamConf["retry_count"]
+	if !ok {
+		rc = defaultRetryCount
 	}
 
 	return &seeker.Config{
@@ -78,8 +79,15 @@ func ParseStoreConfig(confStr string) (*store.Config, error) {
 	if !ok {
 		path = defaultStorePath
 	}
+	buckets, ok := storeConf["buckets"]
+	if !ok {
+		buckets = "steam"
+	}
+
+	b := strings.Split(buckets.(string), " ")
 	return &store.Config{
 		Database:  typ.(string),
 		StorePath: path.(string),
+		Buckets:   b,
 	}, nil
 }

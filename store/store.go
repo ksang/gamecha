@@ -7,19 +7,19 @@ type GameStore interface {
 	Close() error
 	SaveGameList(platform string, games map[int]string) error
 	GetGameList(platform string) (map[int]string, error)
+	GetSavedGameList(platform string) (map[int]string, error)
 }
 
 // Config is the configuration struct of seeker
 type Config struct {
 	Database  string
 	StorePath string
+	Buckets   []string
 }
 
 var (
 	// StoreGameListKey is sub-key name placing full game list of a platform
 	StoreGameListKey = "index"
-	// StoreBucketName is the bucket name used
-	StoreBucketName = "gamecha"
 )
 
 // New creates a new GameStore according to configuration

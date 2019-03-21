@@ -28,6 +28,8 @@ var (
 	ErrSteamFailReponse = errors.New("failed steam response")
 	// ErrSteamRateLimit indicates steam api is rate limiting our seeker
 	ErrSteamRateLimit = errors.New("steam rate limit")
+	// ErrSteamQuitTimeout indicates steam seeker took too long to graceful quit
+	ErrSteamQuitTimeout = errors.New("steam seeker grace quit timed out")
 )
 
 // SteamConfig is the configuration struct of steam seeker
@@ -45,9 +47,9 @@ type SteamSeeker struct {
 	client       *http.Client
 	store        store.GameStore
 	queue        chan int
-	workerQuit   chan struct{}
 	workerDone   chan struct{}
 	workerReturn chan store.GameRecord
+	stop         func()
 }
 
 // appdetail response parsing
@@ -93,13 +95,14 @@ type steamAppDetailData struct {
 }
 
 func startSteamSeeker(ctx context.Context, cfg SteamConfig, db store.GameStore) (*SteamSeeker, error) {
+	ctx, cancel := context.WithCancel(ctx)
 	steam := SteamSeeker{
 		config:       cfg,
 		queue:        make(chan int),
 		store:        db,
 		workerReturn: make(chan store.GameRecord, cfg.WorkerNum),
-		workerQuit:   make(chan struct{}, cfg.WorkerNum),
 		workerDone:   make(chan struct{}, cfg.WorkerNum),
+		stop:         cancel,
 	}
 	if err := steam.getSteamAppList(ctx); err != nil {
 		return nil, err
@@ -111,24 +114,33 @@ func startSteamSeeker(ctx context.Context, cfg SteamConfig, db store.GameStore) 
 	return &steam, nil
 }
 
-// Stop steam seeker for all workers
-func (steam *SteamSeeker) Stop() error {
-	for i := 0; i < steam.config.WorkerNum; i++ {
-		steam.workerQuit <- struct{}{}
-	}
-	return nil
-}
-
 // WaitUntilDone all steam seeker workers done their work
-func (steam *SteamSeeker) WaitUntilDone() error {
-	c := 0
+func (steam *SteamSeeker) WaitUntilDone(ctx context.Context) error {
+	allWorkerDone := make(chan struct{})
+	go func() {
+		c := 0
+		for {
+			select {
+			case <-steam.workerDone:
+				c++
+			}
+			if c == steam.config.WorkerNum {
+				allWorkerDone <- struct{}{}
+				return
+			}
+		}
+	}()
 	for {
 		select {
-		case <-steam.workerDone:
-			c++
-		}
-		if c == steam.config.WorkerNum {
+		case <-allWorkerDone:
 			return nil
+		case <-ctx.Done():
+			select {
+			case <-time.After(3000000000):
+				return ErrSteamQuitTimeout
+			case <-allWorkerDone:
+				return nil
+			}
 		}
 	}
 }
@@ -162,7 +174,7 @@ func (steam *SteamSeeker) processSteamAppList(resp *http.Response, err error) er
 		gameList[game.GetInt("appid")] = string(game.GetStringBytes("name"))
 	}
 
-	oldList, err := steam.store.GetGameList("steam")
+	oldList, err := steam.store.GetSavedGameList("steam")
 	if err != nil {
 		return err
 	}
@@ -188,9 +200,7 @@ func (steam *SteamSeeker) createSeekerQueue(oldList map[int]string, newList map[
 		for k := range ret {
 			steam.queue <- k
 		}
-		for i := 0; i < steam.config.WorkerNum; i++ {
-			steam.workerQuit <- struct{}{}
-		}
+		steam.stop()
 		close(steam.queue)
 	}()
 	return ret, nil
@@ -285,11 +295,18 @@ func (steam *SteamSeeker) workerThread(ctx context.Context) error {
 					}
 
 					log.Printf("workerThread[%d] getSteamAppDetail err: %v appid: %d retry count: %d", ctx.Value(workerIDKey).(int), err, appID, i)
-					time.Sleep(steam.config.RetryInterval)
+					select {
+					case <-ctx.Done():
+						log.Printf("workerThread[%d] signaled to quit", ctx.Value(workerIDKey).(int))
+						return nil
+					case <-time.After(steam.config.RetryInterval):
+						continue
+
+					}
 				}
 			}
-		case <-steam.workerQuit:
-			log.Printf("workerThread %d quiting", ctx.Value(workerIDKey).(int))
+		case <-ctx.Done():
+			log.Printf("workerThread[%d] signaled to quit", ctx.Value(workerIDKey).(int))
 			return nil
 		}
 	}

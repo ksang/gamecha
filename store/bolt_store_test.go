@@ -8,6 +8,7 @@ import (
 var storeCfg = Config{
 	Database:  "bolt",
 	StorePath: "test.db",
+	Buckets:   []string{"test"},
 }
 
 func TestNewBoltStore(t *testing.T) {
@@ -78,6 +79,18 @@ func TestSaveGetGameRecord(t *testing.T) {
 				Publishers:  []string{"Kojima Productions", "CDPR"},
 			},
 		},
+		{
+			"9999",
+			GameRecord{
+				Name:        "TestGame",
+				RequiredAge: 18,
+				Description: "No desc",
+				About:       "No About",
+				Languages:   "Chinese,English",
+				Developers:  []string{"Kojima Productions", "CDPR"},
+				Publishers:  []string{"Kojima Productions", "CDPR"},
+			},
+		},
 	}
 
 	for caseid, c := range tests {
@@ -93,4 +106,9 @@ func TestSaveGetGameRecord(t *testing.T) {
 		}
 		t.Logf("Result: %v", g)
 	}
+	gl, err := store.GetSavedGameList("test")
+	if err != nil {
+		t.Errorf("GetSavedGameList error: %v", err)
+	}
+	t.Logf("Saved game list: %v", gl)
 }

@@ -26,9 +26,10 @@ func TestParseSeekerConfig(t *testing.T) {
 `,
 			seeker.Config{
 				SteamConfig: seeker.SteamConfig{
-					Portal:    "http://api.steampowered.com/",
-					Key:       "16A02FCADCE5D2C8A90CBD9F8A16E63C",
-					WorkerNum: 10,
+					Portal:     "http://api.steampowered.com/",
+					Key:        "16A02FCADCE5D2C8A90CBD9F8A16E63C",
+					WorkerNum:  10,
+					RetryCount: 5,
 				},
 			},
 		},
@@ -40,6 +41,7 @@ func TestParseSeekerConfig(t *testing.T) {
                     key: 16A02FCADCE5D2C8A90CBD9F8A16E63C
                     worker: 10
                     retry_interval: 30s
+                    retry_count: 0
             store:
                 type: bolt`,
 			seeker.Config{
@@ -80,10 +82,13 @@ func TestParseStoreConfig(t *testing.T) {
             store:
                 type: bolt
                 path: /tmp/test.db
-`,
+                buckets:
+                    steam
+                    gog`,
 			store.Config{
 				Database:  "bolt",
 				StorePath: "/tmp/test.db",
+				Buckets:   []string{"steam", "gog"},
 			},
 		},
 	}
