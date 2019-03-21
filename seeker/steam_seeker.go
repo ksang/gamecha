@@ -97,8 +97,8 @@ type steamAppDetailData struct {
 	ContentDescriptors map[string]interface{}   `json:"content_descriptors"`
 }
 
-func startSteamSeeker(ctx context.Context, cfg SteamConfig, db store.GameStore) (*SteamSeeker, error) {
-	steam := SteamSeeker{
+func newSteamSeeker(cfg SteamConfig, db store.GameStore) *SteamSeeker {
+	return &SteamSeeker{
 		config:       cfg,
 		queue:        make(chan int),
 		errc:         make(chan error),
@@ -108,6 +108,10 @@ func startSteamSeeker(ctx context.Context, cfg SteamConfig, db store.GameStore) 
 		debugLog:     log.New(os.Stdout, "SteamSeeker DEBUG:", log.LstdFlags|log.Lshortfile),
 		infoLog:      log.New(os.Stdout, "SteamSeeker INFO:", log.LstdFlags|log.Lshortfile),
 	}
+}
+
+func startSteamSeeker(ctx context.Context, cfg SteamConfig, db store.GameStore) (*SteamSeeker, error) {
+	steam := newSteamSeeker(cfg, db)
 	if err := steam.getSteamAppList(ctx); err != nil {
 		return nil, err
 	}
@@ -119,7 +123,7 @@ func startSteamSeeker(ctx context.Context, cfg SteamConfig, db store.GameStore) 
 		go steam.workerThread(wCtx)
 	}
 
-	return &steam, nil
+	return steam, nil
 }
 
 // WaitUntilDone all steam seeker workers done their work

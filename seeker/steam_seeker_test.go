@@ -16,11 +16,7 @@ func TestGetSteamAppList(t *testing.T) {
 		Key:       "",
 		WorkerNum: 10,
 	}
-	steam := SteamSeeker{
-		config: cfg,
-		store:  s,
-		queue:  make(chan int),
-	}
+	steam := newSteamSeeker(cfg, s)
 	timeout, _ := time.ParseDuration("60s")
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -237,11 +233,7 @@ func TestGetSteamAppDetail(t *testing.T) {
 		Key:       "",
 		WorkerNum: 10,
 	}
-	steam := SteamSeeker{
-		config:       cfg,
-		queue:        make(chan int),
-		workerReturn: make(chan store.GameRecord, 10),
-	}
+	steam := newSteamSeeker(cfg, nil)
 	var tests = []struct {
 		id int
 	}{
