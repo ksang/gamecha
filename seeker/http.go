@@ -15,7 +15,6 @@ func httpDo(ctx context.Context, req *http.Request, client *http.Client, callbac
 	go func() { c <- callback(client.Do(req)) }()
 	select {
 	case <-ctx.Done():
-		<-c
 		return ctx.Err()
 	case err := <-c:
 		return err

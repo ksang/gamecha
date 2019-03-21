@@ -71,6 +71,7 @@ func TestSaveGetGameRecord(t *testing.T) {
 			"1",
 			GameRecord{
 				Name:        "TestGame",
+				ID:          1,
 				RequiredAge: 18,
 				Description: "No desc",
 				About:       "No About",
@@ -83,6 +84,7 @@ func TestSaveGetGameRecord(t *testing.T) {
 			"9999",
 			GameRecord{
 				Name:        "TestGame",
+				ID:          9999,
 				RequiredAge: 18,
 				Description: "No desc",
 				About:       "No About",

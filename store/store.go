@@ -8,6 +8,7 @@ type GameStore interface {
 	SaveGameList(platform string, games map[int]string) error
 	GetGameList(platform string) (map[int]string, error)
 	GetSavedGameList(platform string) (map[int]string, error)
+	SaveGameRecord(platform string, subid string, r GameRecord) error
 }
 
 // Config is the configuration struct of seeker
@@ -36,6 +37,7 @@ func New(cfg *Config) (GameStore, error) {
 // GameRecord represents detailed game information
 type GameRecord struct {
 	Name        string
+	ID          int
 	RequiredAge int
 	Description string
 	About       string

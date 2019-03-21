@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -47,9 +48,11 @@ type SteamSeeker struct {
 	client       *http.Client
 	store        store.GameStore
 	queue        chan int
+	errc         chan error
 	workerDone   chan struct{}
 	workerReturn chan store.GameRecord
-	stop         func()
+	debugLog     *log.Logger
+	infoLog      *log.Logger
 }
 
 // appdetail response parsing
@@ -95,22 +98,27 @@ type steamAppDetailData struct {
 }
 
 func startSteamSeeker(ctx context.Context, cfg SteamConfig, db store.GameStore) (*SteamSeeker, error) {
-	ctx, cancel := context.WithCancel(ctx)
 	steam := SteamSeeker{
 		config:       cfg,
 		queue:        make(chan int),
+		errc:         make(chan error),
 		store:        db,
 		workerReturn: make(chan store.GameRecord, cfg.WorkerNum),
 		workerDone:   make(chan struct{}, cfg.WorkerNum),
-		stop:         cancel,
+		debugLog:     log.New(os.Stdout, "SteamSeeker DEBUG:", log.LstdFlags|log.Lshortfile),
+		infoLog:      log.New(os.Stdout, "SteamSeeker INFO:", log.LstdFlags|log.Lshortfile),
 	}
 	if err := steam.getSteamAppList(ctx); err != nil {
 		return nil, err
 	}
+	go func() {
+		steam.errc <- steam.storeRecord(ctx)
+	}()
 	for i := 0; i < cfg.WorkerNum; i++ {
 		wCtx := context.WithValue(ctx, workerIDKey, i)
 		go steam.workerThread(wCtx)
 	}
+
 	return &steam, nil
 }
 
@@ -141,12 +149,14 @@ func (steam *SteamSeeker) WaitUntilDone(ctx context.Context) error {
 			case <-allWorkerDone:
 				return nil
 			}
+		case err := <-steam.errc:
+			return err
 		}
 	}
 }
 
 func (steam *SteamSeeker) getSteamAppList(ctx context.Context) error {
-	log.Printf("steam seeker getting app list")
+	steam.debugLog.Printf("getting app list")
 	req, err := http.NewRequest("GET", steam.config.Portal+pathGetAppList, nil)
 	if err != nil {
 		return err
@@ -178,7 +188,7 @@ func (steam *SteamSeeker) processSteamAppList(resp *http.Response, err error) er
 	if err != nil {
 		return err
 	}
-	log.Printf("processSteamAppList: oldGameList len: %d, newGameList len: %d", len(oldList), len(gameList))
+	steam.debugLog.Printf("processSteamAppList: oldGameList len: %d, newGameList len: %d", len(oldList), len(gameList))
 	diff, err := steam.createSeekerQueue(oldList, gameList)
 	if err != nil {
 		return err
@@ -200,14 +210,13 @@ func (steam *SteamSeeker) createSeekerQueue(oldList map[int]string, newList map[
 		for k := range ret {
 			steam.queue <- k
 		}
-		steam.stop()
 		close(steam.queue)
 	}()
 	return ret, nil
 }
 
 func (steam *SteamSeeker) getSteamAppDetail(ctx context.Context, appid int) error {
-	log.Printf("workerThread[%d] getting app detail: %d", ctx.Value(workerIDKey), appid)
+	steam.debugLog.Printf("workerThread[%d] getting app detail: %d", ctx.Value(workerIDKey), appid)
 	req, err := http.NewRequest("GET", pathGetAppDetail, nil)
 	q := req.URL.Query()
 	q.Add("appids", strconv.FormatInt(int64(appid), 10))
@@ -244,11 +253,12 @@ func (steam *SteamSeeker) processSteamAppDetail(resp *http.Response, err error) 
 	case float64:
 		reqAge = int64(sad.RequiredAge.(float64))
 	default:
-		log.Printf("RequiredAge unknown type %T!", v)
+		steam.infoLog.Printf("RequiredAge unknown type %T!", v)
 		return errors.New("can't parse required age")
 	}
 	gr := store.GameRecord{
 		Name:        sad.Name,
+		ID:          sad.Appid,
 		RequiredAge: int(reqAge),
 		Description: sad.DetailedDescription,
 		About:       sad.AboutTheGame,
@@ -283,30 +293,47 @@ func (steam *SteamSeeker) workerThread(ctx context.Context) error {
 		steam.workerDone <- struct{}{}
 	}()
 	rc := steam.config.RetryCount
+	id := ctx.Value(workerIDKey).(int)
 	for {
 		select {
 		case appID := <-steam.queue:
+			// Retrying get one app detail several times according to config
 			for i := 0; ; i++ {
 				if err := steam.getSteamAppDetail(ctx, appID); err == nil || (rc > 0 && i >= rc) {
 					break
 				} else {
+					// If err is due to steam api rate limit, keep retry
 					if err == ErrSteamRateLimit {
 						i = 0
 					}
-
-					log.Printf("workerThread[%d] getSteamAppDetail err: %v appid: %d retry count: %d", ctx.Value(workerIDKey).(int), err, appID, i)
+					steam.debugLog.Printf("workerThread[%d] getSteamAppDetail err: %v appid: %d count: %d", id, err, appID, i)
 					select {
 					case <-ctx.Done():
-						log.Printf("workerThread[%d] signaled to quit", ctx.Value(workerIDKey).(int))
+						steam.infoLog.Printf("workerThread[%d] signaled to quit", id)
 						return nil
 					case <-time.After(steam.config.RetryInterval):
 						continue
-
 					}
 				}
 			}
 		case <-ctx.Done():
-			log.Printf("workerThread[%d] signaled to quit", ctx.Value(workerIDKey).(int))
+			steam.infoLog.Printf("workerThread[%d] signaled to quit", id)
+			return nil
+		}
+	}
+}
+
+func (steam *SteamSeeker) storeRecord(ctx context.Context) error {
+	for {
+		select {
+		case gr := <-steam.workerReturn:
+			if err := steam.store.SaveGameRecord("steam", strconv.FormatInt(int64(gr.ID), 10), gr); err != nil {
+				steam.infoLog.Printf("failed to save game record, appid: %d", gr.ID)
+				return err
+			}
+
+		case <-ctx.Done():
+			steam.infoLog.Printf("store record process signaled to quit")
 			return nil
 		}
 	}

@@ -35,6 +35,12 @@ func (ds *DummyStore) SaveGameList(platform string, games map[int]string) error 
 	return nil
 }
 
+// SaveGameRecord to dummy store
+func (ds *DummyStore) SaveGameRecord(platform string, subid string, r GameRecord) error {
+	fmt.Printf("Saving game %s to %s, detail %v\n", subid, platform, r)
+	return nil
+}
+
 // GetGameList from dummy store, pretend to have most of games
 func (ds *DummyStore) GetGameList(platform string) (map[int]string, error) {
 	ret := make(map[int]string)

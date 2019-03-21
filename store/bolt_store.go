@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"log"
+	"os"
 	"strconv"
 
 	"github.com/etcd-io/bbolt"
@@ -13,6 +14,34 @@ type BoltStore struct {
 	LogLevel string
 	Buckets  []string
 	db       *bbolt.DB
+	debugLog *log.Logger
+	infoLog  *log.Logger
+}
+
+// NewBoltStore creates a bolt store
+func NewBoltStore(cfg Config) (*BoltStore, error) {
+	db, err := bbolt.Open(cfg.StorePath, 0600, nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, b := range cfg.Buckets {
+		if err := db.Update(func(tx *bbolt.Tx) error {
+			if _, err := tx.CreateBucketIfNotExists([]byte(b)); err != nil {
+				return err
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	}
+	log.Printf("%s store created at: %s buckets: %s", cfg.Database, cfg.StorePath, cfg.Buckets)
+	return &BoltStore{
+		LogLevel: "debug",
+		Buckets:  cfg.Buckets,
+		db:       db,
+		debugLog: log.New(os.Stdout, "BoltStore DEBUG:", log.LstdFlags|log.Lshortfile),
+		infoLog:  log.New(os.Stdout, "BoltStore INFO:", log.LstdFlags|log.Lshortfile),
+	}, nil
 }
 
 // Close badger store
@@ -22,7 +51,7 @@ func (bs *BoltStore) Close() error {
 
 // SaveGameList to badger store
 func (bs *BoltStore) SaveGameList(platform string, games map[int]string) error {
-	log.Printf("Saving list %d %s games", len(games), platform)
+	bs.infoLog.Printf("Saving list %d %s games", len(games), platform)
 	value, err := Encode(games)
 	if err != nil {
 		return err
@@ -81,7 +110,7 @@ func (bs *BoltStore) GetSavedGameList(platform string) (map[int]string, error) {
 
 // SaveGameRecord to badger store
 func (bs *BoltStore) SaveGameRecord(platform string, subid string, r GameRecord) error {
-	log.Printf("Saving GameRecord: %s, %s.", platform, r.Name)
+	bs.debugLog.Printf("Saving GameRecord: %s, %s - %s.", platform, subid, r.Name)
 	value, err := Encode(r)
 	if err != nil {
 		return err
@@ -119,28 +148,4 @@ func (bs *BoltStore) GetGameRecord(platform string, subid string) (*GameRecord, 
 		}
 	}
 	return &r, nil
-}
-
-// NewBoltStore creates a bolt store
-func NewBoltStore(cfg Config) (*BoltStore, error) {
-	db, err := bbolt.Open(cfg.StorePath, 0600, nil)
-	if err != nil {
-		return nil, err
-	}
-	for _, b := range cfg.Buckets {
-		if err := db.Update(func(tx *bbolt.Tx) error {
-			if _, err := tx.CreateBucketIfNotExists([]byte(b)); err != nil {
-				return err
-			}
-			return nil
-		}); err != nil {
-			return nil, err
-		}
-	}
-	log.Printf("%s store created at: %s buckets: %s", cfg.Database, cfg.StorePath, cfg.Buckets)
-	return &BoltStore{
-		LogLevel: "debug",
-		Buckets:  cfg.Buckets,
-		db:       db,
-	}, nil
 }
